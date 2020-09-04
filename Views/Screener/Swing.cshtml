@@ -1,0 +1,57 @@
+﻿@model StockUtility.Models.NSEInsiderResponse
+
+@{
+    ViewData["Title"] = "Swing";
+}
+
+<h1 class="display-4 text-center">Swing Trade Stocks Screener</h1>
+
+<div>
+    <h5 class="text-center">Stocks in which promoters made purchase in last 90 days</h5>
+    <hr />
+    <div class="justify-content-center align-items-center">
+        @if (Model.IsSuccess)
+        {
+            <input type="hidden" name="Symbols" value="" />
+            <dl class="row">
+                @foreach (var stock in Model.Stocks)
+                {
+                <dt class="col-sm-2">
+                    @stock.Symbol
+                </dt>
+                <dd class="col-sm-10">
+                    @stock.Value
+                </dd>
+                }
+            </dl>
+        }
+    </div>
+
+    @if (!Model.IsSuccess)
+    {
+        <div class="form-group">
+            <label class="text-danger">@Model.ErrorMessage</label>
+        </div>
+    }
+    @if (Model.IsCookieRequired)
+    {
+        @using (Html.BeginForm("Swing", "Screener", FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+
+            <div class="form-horizontal">
+                <div class="form-group">
+                    @Html.LabelFor(model => model.Cookie, htmlAttributes: new { @class = "control-label col-md-2" })
+                    <div class="col-md-10">
+                        <input type="text" name="Cookie" value="" class="form-control" required />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="col-md-offset-2 col-md-10">
+                        <input type="submit" value="Submit" class="btn btn-default" />
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
