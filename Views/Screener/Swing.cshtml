@@ -7,27 +7,61 @@
 <h1 class="display-4 text-center">Swing Trade Stocks Screener</h1>
 
 <div>
-    <h5 class="text-center">Stocks in which promoters made purchase in last 90 days</h5>
+    <h5 class="text-center">Stocks in which promoters made purchase of more than 1 Cr. in last 90 days</h5>
     <hr />
-    <div class="justify-content-center align-items-center">
+    <div class="container text-center">
         @if (Model.IsSuccess)
         {
-            <input type="hidden" name="Symbols" value="" />
-            <dl class="row">
-                @foreach (var stock in Model.Stocks)
-                {
-                <dt class="col-sm-2">
-                    @stock.Symbol
-                </dt>
-                <dd class="col-sm-10">
-                    @stock.Value
-                </dd>
-                }
-            </dl>
+            <a class="btn btn-sm btn-primary" asp-area="" asp-controller="Screener" asp-action="CorporateInfo">Filter Valid Stocks</a>
+            <hr />
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Purchase made</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var stock in Model.Stocks)
+                    {
+                        <tr>
+                            <td>@stock.Symbol</td>
+                            <td>@stock.Value</td>
+                        </tr>
+                    }
+
+                </tbody>
+            </table>
+        }
+        @if (Model.IsEligibleResponse)
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Average Price</th>
+                        <th>Promoter Holding</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var stock in Model.Stocks)
+                    {
+                        @if (stock.AveragePrice != -1)
+                        {
+                            <tr>
+                                <td>@stock.Symbol</td>
+                                <td>@stock.AveragePrice</td>
+                                <td>@stock.PromoterInfo</td>
+                            </tr>
+                        }
+                    }
+
+                </tbody>
+            </table>
         }
     </div>
 
-    @if (!Model.IsSuccess)
+    @if (!Model.IsSuccess && !Model.IsEligibleResponse)
     {
         <div class="form-group">
             <label class="text-danger">@Model.ErrorMessage</label>
@@ -48,7 +82,7 @@
                 </div>
                 <div class="form-group">
                     <div class="col-md-offset-2 col-md-10">
-                        <input type="submit" value="Submit" class="btn btn-default" />
+                        <input type="submit" value="Submit" class="btn btn-primary" />
                     </div>
                 </div>
             </div>

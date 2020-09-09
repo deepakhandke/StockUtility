@@ -7,6 +7,8 @@ using StockUtility.Utility;
 using StockUtility.Constants;
 using StockUtility.Models;
 using Microsoft.AspNetCore.Session;
+using ServiceStack.Text;
+using ServiceStack;
 
 namespace StockUtility.Controllers
 {
@@ -42,7 +44,7 @@ namespace StockUtility.Controllers
                     return View(new NSEInsiderResponse() { IsSuccess = true, Stocks = filteredData,Cookie = request.Cookie, Symbols = string.Join(",", filteredData.Select(x => x.Symbol).ToList()) });
                 return View(new NSEInsiderResponse() { ErrorMessage = CommonError.NoRecordsFound });
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 return View(new NSEInsiderResponse() { IsCookieRequired = true, ErrorMessage = CommonError.CookieExpired });
             }
@@ -70,11 +72,13 @@ namespace StockUtility.Controllers
                 List<string> symbols = request.Symbols.Split(',').ToList();
                 foreach (var symbol in symbols)
                 {
-                    var data = EligibleStock(symbol, request.Cookie);
-                    if (data.IsNotNull() && data.AveragePrice == -1)
+                    var price = GetAveragePrice(symbol, request.Cookie);
+                    if (price == -1)
                         break;
-                    if (data.IsNotNull())
-                        stocks.Add(data);
+                    else
+                    {
+                        stocks.Add(new StockData() { Symbol = symbol, AveragePrice = price });
+                    } 
                 }
                 if (!stocks.HasRecords())
                 {
@@ -82,14 +86,57 @@ namespace StockUtility.Controllers
                 }
                 return View(new NSEInsiderResponse() { IsSuccess = true, Stocks = stocks , Cookie = request.Cookie });
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 return View(new NSEInsiderResponse() { IsCookieRequired = true, ErrorMessage = CommonError.CookieExpired });
             }
         }
 
+
+        [HttpGet]
+        public IActionResult CorporateInfo()
+        {
+            NSEInsiderResponse response = new NSEInsiderResponse();
+            try
+            {
+                string allSymbols = default(string);
+                if (TempData["Symbols"].IsNotNull())
+                    allSymbols = Convert.ToString(TempData["Symbols"]);
+                if (TempData["Cookie"].IsNotNull())
+                    response.Cookie = Convert.ToString(TempData["Cookie"]);
+                if(string.IsNullOrEmpty(allSymbols) || string.IsNullOrEmpty(response.Cookie))
+                {
+                    response.ErrorMessage = "Invalid Request/Cookie Expired!";
+                    return View("Swing", response);
+                }
+                List<string> Allsymbols = allSymbols.Split(',').ToList();
+                List<StockData> filteredStocks = new List<StockData>(); 
+                foreach (var symbol in Allsymbols)
+                {
+                    var priceTask = Task.Factory.StartNew(() => GetAveragePrice(symbol, response.Cookie));
+                    var resp = GetCorpInfo(symbol, response.Cookie);
+                    priceTask.Wait();
+                    if (resp.IsNotNull())
+                        filteredStocks.Add(new StockData() { Symbol = symbol , PromoterInfo = resp.PromoterDetails.Split("Promoter & Promoter Group,")[1].Split('}')[0], AveragePrice = priceTask.Result   });
+                }
+                if (filteredStocks.HasRecords())
+                {
+                    response.IsEligibleResponse = true;
+                    response.Stocks = filteredStocks;
+                }
+                return View("Swing",response);
+            }
+            catch (Exception)
+            {
+                response.IsCookieRequired = true;
+                response.ErrorMessage = CommonError.CookieExpired;
+                return View("Swing", response);
+            }
+
+        }
+
         [NonAction]
-        public StockData EligibleStock(string symbol,string cookie)
+        public long GetAveragePrice(string symbol,string cookie)
         {
             StockData stock = null;
             try
@@ -97,16 +144,38 @@ namespace StockUtility.Controllers
                 NSEInsider response = RestServiceUtils.MakeGetRestCallByTimeOut<NSEInsider>(string.Format(URLConstants.NSEInsiderCorporateAPI, symbol), "https://www.nseindia.com/", 1, cookie);
                 if (response.IsNotNull())
                 {
-                    var filteredData = response.data.Where(x => x.symbol == symbol && x.acqMode == "Market Purchase" && (x.personCategory == "Promoter Group" || x.personCategory == "Promoters"));
+                    var filteredData = response.data.Where(x => x.symbol == symbol && x.acqMode == "Market Purchase" && (x.personCategory == "Promoter Group" || x.personCategory == "Promoters") && DateTime.Parse(x.acqfromDt) > DateTime.Now.AddMonths(-3));
                     stock =  filteredData.GroupBy(r => r.symbol)
                                         .Select(a => new StockData() { Symbol = a.Key, Value = a.Sum(b => long.Parse(b.secVal)), AveragePrice = a.Sum(b => long.Parse(b.secVal))/a.Sum(b => long.Parse(b.secAcq)) })
                                         .FirstOrDefault();
                 }
-                return stock;
+                return stock.AveragePrice;
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                return new StockData() { AveragePrice = -1 };
+                return  -1;
+            }
+        }
+
+        [NonAction]
+        public CorpDetailResp GetCorpInfo(string symbol, string cookie)
+        {
+            CorpDetailResp resp = new CorpDetailResp();
+            try
+            {
+                CorpInfo response = RestServiceUtils.MakeGetRestCallByTimeOut<CorpInfo>(string.Format(URLConstants.NSEGetCorpDetail, symbol), "https://www.nseindia.com/", 1, cookie);
+                long p = default(long);
+                resp.mfSold = response.corporate.sastRegulations_29.HasRecords() && response.corporate.sastRegulations_29.Where(x => DateTime.Parse(x.timestamp) > DateTime.Now.AddMonths(-5)).HasRecords() ? response.corporate.sastRegulations_29.Where(x => DateTime.Parse(x.timestamp) > DateTime.Now.AddMonths(-5)).Any(y=> long.TryParse(y.noOfShareSale, out p)) : default(bool) ;
+                resp.pledged = response.corporate.pledgedetails.HasRecords() ? decimal.Parse(response.corporate.pledgedetails.First().per3) > default(decimal) : default(bool);
+                resp.PromoterDetails = response.corporate.shareholdingPatterns.data.HasRecords() ?response.corporate.shareholdingPatterns.data.First().ToJson() : string.Empty ;
+                resp.IsNotEligible = resp.mfSold || resp.pledged;
+                return resp.IsNotEligible ? null : resp;
+
+            }
+            catch (Exception)
+            {
+
+                return null;
             }
         }
     }

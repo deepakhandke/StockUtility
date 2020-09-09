@@ -51,12 +51,14 @@ namespace StockUtility.Models
 
         public bool IsSuccess { get; set; }
         public bool IsCookieRequired { get; set; }
+        public bool IsEligibleResponse { get; set; }
         public string ErrorMessage { get; set; }
         public string Cookie { get; set; }
     }
     public class StockData
     {
         public string Symbol { get; set; }
+        public string PromoterInfo { get; set; }
         public long Value { get; set; }
         public long AveragePrice { get; set; }
     }
